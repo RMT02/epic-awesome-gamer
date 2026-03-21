@@ -61,7 +61,7 @@ curl -fsSL https://raw.githubusercontent.com/10000ge10000/epic-kiosk/main/instal
 **3. 启动项目**
 
 <details>
-<summary>📝 点击展开 Compose 代码</summary>
+<summary><b>📝 点击展开 Compose 代码</b></summary>
 
 ```yaml
 services:
@@ -72,10 +72,6 @@ services:
     volumes:
       - epic-code:/code
       - epic-data:/data
-    environment:
-      # ⚠️⚠️⚠️ 必须修改（第 1 处）⚠️⚠️⚠️
-      # 获取地址: https://cloud.siliconflow.cn/i/OVI2n57p
-      - SILICONFLOW_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
     command: >
       sh -c '
         set -e
@@ -84,7 +80,6 @@ services:
         else
           git clone --depth 1 https://github.com/10000ge10000/epic-kiosk.git /code
         fi
-        sed -i "s|SILICONFLOW_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx|SILICONFLOW_API_KEY=$${SILICONFLOW_API_KEY}|g" /code/docker-compose.yml
         mkdir -p /data/images /data/logs /data/user_data
       '
     restart: "no"
@@ -142,7 +137,7 @@ services:
       - API_PROVIDER=siliconflow
       - SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
       # ============================================================
-      # ⚠️⚠️⚠️ 必须修改下方 API Key（第 2 处）⚠️⚠️⚠️
+      # ⚠️⚠️⚠️ 必须修改下方 API Key ⚠️⚠️⚠️
       # 获取地址: https://cloud.siliconflow.cn/i/OVI2n57p
       # ============================================================
       - SILICONFLOW_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
@@ -187,7 +182,7 @@ volumes:
 
 #### ⚠️ 部署前必读
 
-1. **修改 API Key**：将代码中 **2 处** `sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` 替换为你的 Key
+1. **修改 API Key**：将代码中的 `sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx` 替换为你的 Key
    - 获取地址：[https://cloud.siliconflow.cn/i/OVI2n57p](https://cloud.siliconflow.cn/i/OVI2n57p)（注册送 ¥16 代金券）
 
 2. **首次启动约需 5-10 分钟**（克隆代码 + 安装依赖）
