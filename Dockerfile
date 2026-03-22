@@ -2,7 +2,7 @@ FROM python:3.10-slim
 
 WORKDIR /app
 
-# 预创建挂载点目录（解决飞牛 NAS 等 Docker 存储驱动兼容性问题）
+# 预创建挂载点目录（解决 Docker 存储驱动挂载权限问题）
 RUN mkdir -p /app/data
 
 RUN pip install --no-cache-dir \

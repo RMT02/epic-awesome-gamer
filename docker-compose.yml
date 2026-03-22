@@ -7,8 +7,7 @@
 #
 # 🚀 部署方式：
 #   1. Linux 一键部署: curl -fsSL https://raw.githubusercontent.com/10000ge10000/epic-kiosk/main/install.sh | bash
-#   2. 手动部署: 修改 API Key 后执行 docker compose up -d --build
-#   3. NAS 部署: 复制本项目到 NAS，修改 API Key 后通过 Docker Compose 启动
+#   2. 手动部署: 克隆项目 → 修改 API Key → docker compose up -d --build
 #
 # ⚠️ 必须修改: SILICONFLOW_API_KEY
 #    获取地址: https://cloud.siliconflow.cn/i/OVI2n57p

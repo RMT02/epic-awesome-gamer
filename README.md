@@ -48,31 +48,28 @@ curl -fsSL https://raw.githubusercontent.com/10000ge10000/epic-kiosk/main/instal
 
 ---
 
-### 方式二：NAS 部署
+### 方式二：手动部署
 
-适用于：群晖、威联通、绿联、飞牛等 NAS 系统
+适用于：已有 Docker 环境的 Linux / macOS / Windows 主机
 
 #### 步骤
 
-**1. 下载项目**
+**1. 克隆项目**
 
-从 GitHub 下载 ZIP 压缩包并解压到 NAS 目录：
-
-```
-https://github.com/10000ge10000/epic-kiosk/archive/refs/heads/main.zip
+```bash
+git clone https://github.com/10000ge10000/epic-kiosk.git
+cd epic-kiosk
 ```
 
 **2. 修改配置**
 
-编辑解压后的 `docker-compose.yml` 文件，修改第 97 行的 API Key：
+编辑 `docker-compose.yml` 文件，修改第 97 行的 API Key：
 
 ```yaml
 - SILICONFLOW_API_KEY=sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx  # 替换为你的 Key
 ```
 
 **3. 启动项目**
-
-在项目目录下执行：
 
 ```bash
 docker compose up -d --build
@@ -82,24 +79,13 @@ docker compose up -d --build
 
 ---
 
-#### 🖥️ NAS 图形界面操作
-
-| NAS 品牌 | 操作路径 |
-|----------|----------|
-| **群晖** | Container Manager → 项目 → 新建 → 选择解压目录 |
-| **威联通** | Container Station → 应用程序 → 创建 → 上传 compose 文件 |
-| **绿联** | Docker → 项目 → 创建项目 → 选择目录 |
-| **飞牛** | Docker → Compose → 新建 → 选择目录 |
-
----
-
 #### ⚠️ 部署前必读
 
 1. **修改 API Key**：获取地址 [https://cloud.siliconflow.cn/i/OVI2n57p](https://cloud.siliconflow.cn/i/OVI2n57p)（注册送 ¥16 代金券）
 
 2. **端口冲突**：默认端口 `18000`，如需修改请编辑 `docker-compose.yml` 第 51 行
 
-3. **部署完成后访问**：`http://NAS的IP:18000`
+3. **部署完成后访问**：`http://服务器IP:18000`
 
 ---
 
