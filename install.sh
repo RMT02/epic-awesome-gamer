@@ -225,10 +225,15 @@ configure_api_key() {
     echo "   复制生成的密钥（以 sk- 开头）"
     echo ""
 
-    # 检查是否已配置 API Key
+    # 检查是否已配置 API Key（排除注释行，只匹配实际配置）
     if [ -f "docker-compose.yml" ]; then
-        current_key=$(grep "SILICONFLOW_API_KEY=" docker-compose.yml | head -1 | sed 's/.*SILICONFLOW_API_KEY=//')
-        if [[ "$current_key" != "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" && "$current_key" =~ ^sk- ]]; then
+        # 只匹配以 "- SILICONFLOW_API_KEY=" 开头的行，排除注释
+        current_key=$(grep -E "^\s*-\s+SILICONFLOW_API_KEY=" docker-compose.yml | head -1 | sed 's/.*SILICONFLOW_API_KEY=//')
+        # 提取实际值：处理 ${VAR:-default} 格式，只取 default 部分
+        if [[ "$current_key" =~ ^\$\{[^}]+:-([^}]+)\}$ ]]; then
+            current_key="${BASH_REMATCH[1]}"
+        fi
+        if [[ "$current_key" != "sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" && "$current_key" =~ ^sk-[a-zA-Z0-9]+$ ]]; then
             print_success "已检测到 API Key: ${current_key:0:10}...${current_key: -4}"
             read -p "是否使用现有 Key? [Y/n]: " use_existing < /dev/tty
             use_existing=${use_existing:-Y}
