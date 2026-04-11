@@ -7,6 +7,7 @@ import requests
 import re
 import shutil
 import glob
+import socket
 from bs4 import BeautifulSoup
 
 # Redis
@@ -21,11 +22,140 @@ os.makedirs(IMAGES_DIR, exist_ok=True)
 
 # 定义清理路径
 PATHS_TO_CHECK = [
-    "/app/data/user_data",          
-    "/app/app/volumes/user_data"    
+    "/app/data/user_data",
+    "/app/app/volumes/user_data"
 ]
 
-print("👷 Worker V26 (Delay Kill) 启动！")
+# ============================================================
+# 🌐 WARP 代理配置
+# ============================================================
+WARP_PROXY_HOST = os.getenv("WARP_PROXY_HOST", "epic-warp")
+WARP_PROXY_PORT = int(os.getenv("WARP_PROXY_PORT", "19000"))
+WARP_MAX_RETRIES = 5  # 最大重启次数
+EPIC_TEST_URL = "https://store.epicgames.com/en-US/"
+EPIC_TEST_TIMEOUT = 10  # 秒
+
+
+def check_warp_proxy() -> tuple[bool, str]:
+    """
+    检测 WARP 代理是否可用
+
+    只检测代理连通性和出口 IP，不检测 Epic Games
+    因为 Epic 有 Cloudflare 挑战，需要浏览器才能通过
+
+    Returns:
+        tuple[bool, str]: (是否成功, 错误信息或IP地址)
+    """
+    proxy_url = f"http://{WARP_PROXY_HOST}:{WARP_PROXY_PORT}"
+    proxies = {
+        "http": proxy_url,
+        "https": proxy_url
+    }
+
+    try:
+        # 1. 先检测代理是否可达（TCP 连接）
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(5)
+        result = sock.connect_ex((WARP_PROXY_HOST, WARP_PROXY_PORT))
+        sock.close()
+
+        if result != 0:
+            return False, f"WARP 代理端口不可达: {WARP_PROXY_HOST}:{WARP_PROXY_PORT}"
+
+        # 2. 检测是否可以获取出口 IP（简单测试代理是否工作）
+        try:
+            ip_resp = requests.get(
+                "https://api.ipify.org",
+                proxies=proxies,
+                timeout=10
+            )
+            if ip_resp.status_code == 200:
+                ip = ip_resp.text.strip()
+                return True, ip
+            return False, f"IP 查询失败: {ip_resp.status_code}"
+        except requests.exceptions.ProxyError:
+            return False, "代理连接失败"
+        except requests.exceptions.Timeout:
+            return False, "代理超时"
+
+    except socket.timeout:
+        return False, "TCP 连接超时"
+    except Exception as e:
+        return False, str(e)[:50]
+
+
+def restart_warp_container() -> bool:
+    """
+    重启 WARP 容器以获取新 IP
+
+    Returns:
+        bool: 是否成功重启
+    """
+    try:
+        # 使用 docker 命令重启容器
+        result = subprocess.run(
+            ["docker", "restart", "epic-warp"],
+            capture_output=True,
+            text=True,
+            timeout=60
+        )
+
+        if result.returncode == 0:
+            print(f"🔄 WARP 容器已重启: {result.stdout.strip()}")
+            # 等待容器恢复健康
+            time.sleep(15)
+            return True
+        else:
+            print(f"❌ WARP 容器重启失败: {result.stderr}")
+            return False
+
+    except subprocess.TimeoutExpired:
+        print("❌ WARP 容器重启超时")
+        return False
+    except FileNotFoundError:
+        # docker 命令不存在，尝试使用 Docker API
+        print("⚠️ docker 命令不可用，跳过重启")
+        return False
+    except Exception as e:
+        print(f"❌ WARP 容器重启异常: {e}")
+        return False
+
+
+def ensure_warp_ready() -> bool:
+    """
+    确保 WARP 代理可用，必要时重启换 IP
+
+    Returns:
+        bool: WARP 是否可用
+    """
+    # 如果没有配置 WARP 代理，直接返回成功（不使用代理）
+    if not os.getenv("HTTP_PROXY") and not os.getenv("HTTPS_PROXY"):
+        print("ℹ️ 未配置 WARP 代理，跳过检测")
+        return True
+
+    print(f"🔍 检测 WARP 代理: {WARP_PROXY_HOST}:{WARP_PROXY_PORT}")
+
+    for attempt in range(1, WARP_MAX_RETRIES + 1):
+        success, info = check_warp_proxy()
+
+        if success:
+            print(f"✅ WARP 代理可用 - 出口 IP: {info}")
+            return True
+
+        print(f"⚠️ WARP 检测失败 [{attempt}/{WARP_MAX_RETRIES}]: {info}")
+
+        if attempt < WARP_MAX_RETRIES:
+            print(f"🔄 正在重启 WARP 容器换 IP...")
+            if restart_warp_container():
+                print(f"✅ WARP 已重启，等待恢复...")
+            else:
+                print(f"❌ WARP 重启失败，继续尝试...")
+
+    print(f"❌ WARP 代理不可用，已达最大重试次数")
+    return False
+
+
+print("👷 Worker V27 (WARP Check) 启动！")
 
 def clean_filename(title):
     return re.sub(r'[\\/*?:"<>|]', "", title).replace(" ", "_").lower()
@@ -66,15 +196,42 @@ def scrape_and_download_image(game_title):
     return None
 
 def report_success(email, game_title):
+    """
+    向 Web 后端上报游戏领取成功记录
+
+    包含重试机制（最多3次），避免因网络波动导致记录丢失
+    """
     filename = scrape_and_download_image(game_title)
-    try:
-        requests.post(WEB_API_URL, json={
-            "email": email, 
-            "game_title": game_title,
-            "image_filename": filename or "default.png"
-        }, timeout=5)
-        print(f"📡 尝试入库: {game_title}")
-    except: pass
+
+    for attempt in range(3):
+        try:
+            resp = requests.post(WEB_API_URL, json={
+                "email": email,
+                "game_title": game_title,
+                "image_filename": filename or "default.png"
+            }, timeout=5)
+
+            result = resp.json()
+            status = result.get("status", "unknown")
+
+            if status == "recorded":
+                print(f"✅ 入库成功: {email} → {game_title}")
+                return True
+            elif status == "skipped":
+                print(f"ℹ️ 已存在记录: {email} → {game_title}")
+                return True
+            else:
+                print(f"⚠️ 入库返回异常: {status} (尝试 {attempt+1}/3)")
+
+        except requests.exceptions.RequestException as e:
+            print(f"❌ 入库请求失败: {e} (尝试 {attempt+1}/3)")
+
+        # 重试前等待
+        if attempt < 2:
+            time.sleep(1)
+
+    print(f"❌ 入库失败（已放弃）: {email} → {game_title}")
+    return False
 
 def clean_user_profile(email):
     """普通瘦身优化"""
@@ -295,6 +452,18 @@ def run_task(task_data):
     print(f"🚀 接到任务: {mode} - {email}")
     r.set(f"status:{email}", "🚀 初始化环境...", ex=3600)
 
+    # ============================================================
+    # 🌐 WARP 代理检测
+    # 领取前先检测 WARP 是否可以访问 Epic Games
+    # 如果不通则重启 WARP 容器换 IP，最多尝试 5 次
+    # ============================================================
+    if not ensure_warp_ready():
+        r.set(f"status:{email}", "❌ 网络代理不可用", ex=3600)
+        r.set(f"result:{email}", "warp_unavailable", ex=3600)
+        r.set(f"hint:{email}", "WARP 代理无法连接 Epic Games，请联系管理员", ex=3600)
+        print(f"❌ [{email}] WARP 代理不可用，任务终止")
+        return
+
     env = os.environ.copy()
     env["EPIC_EMAIL"] = email
     env["EPIC_PASSWORD"] = password
@@ -452,10 +621,17 @@ def run_task(task_data):
                         scrape_and_download_image(game_name)
                 except: pass
 
-            if "Free games collection completed" in line:
-                # ============================================================
-                # 🔥 修改：根据错误类型决定后续处理
-                # ============================================================
+            # ============================================================
+            # 🔥 游戏收集完成检测
+            # 匹配多种完成日志格式：
+            # - "🎉 任务完成（已领取或已在库中）"
+            # - "🎉 购物车游戏领取成功"
+            # - "✅ 所有周免游戏已在库中"
+            # ============================================================
+            if ("任务完成" in line or "购物车游戏领取成功" in line or "所有周免游戏已在库中" in line) and not is_fatal_failure:
+                # 等待一小段时间确保游戏标题已解析
+                time.sleep(0.5)
+
                 if is_fatal_failure:
                     nuke_account_immediately(email)
                 elif final_error_type and final_error_type in ERROR_TYPE_MESSAGES:
@@ -464,7 +640,6 @@ def run_task(task_data):
                     r.set(f"status:{email}", error_info["status"], ex=3600)
                     if error_info.get("hint"):
                         r.set(f"hint:{email}", error_info["hint"], ex=3600)
-                    # 不设置 result，让前端根据 error_xxx 结果展示弹窗
                 elif has_critical_error and not is_already_owned:
                     r.set(f"status:{email}", "❌ 任务异常结束", ex=3600)
                     r.set(f"result:{email}", "fail", ex=3600)
@@ -472,7 +647,7 @@ def run_task(task_data):
                     pending_game = r.get(f"pending_game:{email}")
                     if pending_game:
                         report_success(email, pending_game)
-                    if is_already_owned:
+                    if is_already_owned or "已在库中" in line:
                         r.set(f"status:{email}", "✅ 任务完成（已在库中）", ex=3600)
                         r.set(f"result:{email}", "success_owned", ex=3600)
                     else:

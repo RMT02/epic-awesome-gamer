@@ -294,6 +294,7 @@ async def get_system_stats():
     """
     获取系统统计数据：
     - 托管账号总数
+    - 已验证账号数（有领取记录）
     - 今日领取数量
     - 累计领取数量
     - 系统运行时间
@@ -304,6 +305,17 @@ async def get_system_stats():
     # 托管账号总数
     c.execute("SELECT COUNT(*) FROM accounts")
     total_accounts = c.fetchone()[0]
+
+    # 已验证账号数（在 accounts 表中且有成功领取记录）
+    c.execute("""
+        SELECT COUNT(DISTINCT l.email)
+        FROM logs l
+        INNER JOIN accounts a ON l.email = a.email
+    """)
+    verified_accounts = c.fetchone()[0]
+
+    # 待验证账号数（在 accounts 表中但无领取记录）
+    pending_accounts = total_accounts - verified_accounts
 
     # 今日领取数量
     today = datetime.now().strftime("%Y-%m-%d")
@@ -329,6 +341,8 @@ async def get_system_stats():
 
     return {
         "total_accounts": total_accounts,
+        "verified_accounts": verified_accounts,
+        "pending_accounts": pending_accounts,
         "today_claims": today_claims,
         "total_claims": total_claims,
         "queue_length": queue_length,

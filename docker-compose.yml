@@ -15,7 +15,7 @@
 # 📦 镜像说明：
 #   - redis:alpine - 官方镜像，直接拉取
 #   - epic-kiosk-web - 本地编译
-#   - epic-kiosk-worker - 本地编译
+#   - epic-kiosk-worker - 本地编译（含 WARP 网络代理）
 # ============================================================
 
 services:
@@ -64,8 +64,40 @@ services:
         max-file: "3"
 
   # ============================================================
+  # WARP 代理：提供 Cloudflare 网络出口
+  # 用于访问 Epic Games Store（自动重启换 IP）
+  # 镜像: caomingjun/warp（集成 WARP + gost HTTP 代理）
+  # ============================================================
+  warp:
+    image: caomingjun/warp:latest
+    container_name: epic-warp
+    restart: always
+    cap_add:
+      - NET_ADMIN
+    sysctls:
+      net.ipv6.conf.all.disable_ipv6: 0
+    environment:
+      # gost 监听端口（HTTP 代理）
+      - GOST_ARGS=-L http://:19000
+    volumes:
+      - ./data/warp:/var/lib/cloudflare-warp
+    healthcheck:
+      # 使用 curl 测试代理连通性
+      test: ["CMD-SHELL", "curl -s --connect-timeout 5 -x http://127.0.0.1:19000 https://api.ipify.org || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ============================================================
   # Worker: 后台任务执行器（浏览器自动化）
   # 本地编译，首次部署约需 5-10 分钟
+  # 通过 WARP 代理访问 Epic Games
   # ============================================================
   worker:
     build:
@@ -77,6 +109,8 @@ services:
     volumes:
       - ./data:/app/data
       - ./data:/app/app/volumes
+      # Docker socket - 允许 worker 重启 WARP 容器
+      - /var/run/docker.sock:/var/run/docker.sock
     environment:
       - REDIS_HOST=redis
       - TZ=Asia/Shanghai
@@ -84,6 +118,12 @@ services:
       - ENABLE_APSCHEDULER=false
       - API_PROVIDER=siliconflow
       - SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
+      # WARP HTTP 代理（容器内部网络）
+      - HTTP_PROXY=http://epic-warp:19000
+      - HTTPS_PROXY=http://epic-warp:19000
+      # WARP 代理配置（用于检测和重启）
+      - WARP_PROXY_HOST=epic-warp
+      - WARP_PROXY_PORT=19000
       # ============================================================
       # ⚠️⚠️⚠️ 必须配置 API Key ⚠️⚠️⚠️
       # ============================================================
@@ -109,6 +149,8 @@ services:
       - PRIMARY_MODEL_FALLBACK=Qwen/Qwen2.5-72B-Instruct
     depends_on:
       redis:
+        condition: service_healthy
+      warp:
         condition: service_healthy
     restart: always
     logging:

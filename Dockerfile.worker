@@ -5,7 +5,7 @@ WORKDIR /app
 # 预创建挂载点目录（解决 Docker 存储驱动挂载权限问题）
 RUN mkdir -p /app/data /app/app/volumes
 
-# 安装系统依赖
+# 安装系统依赖（包含 docker 客户端）
 RUN apt-get update && apt-get install -y \
     wget \
     gnupg \
@@ -30,6 +30,8 @@ RUN apt-get update && apt-get install -y \
     libxrandr2 \
     xdg-utils \
     xvfb \
+    curl \
+    && curl -fsSL https://get.docker.com -o get-docker.sh && sh get-docker.sh && rm get-docker.sh \
     && rm -rf /var/lib/apt/lists/*
 
 # 安装 uv

@@ -12,6 +12,7 @@ using browser automation and scheduling capabilities.
 
 import asyncio
 import json
+import os
 import signal
 import sys
 from contextlib import suppress
@@ -57,6 +58,24 @@ async def execute_browser_tasks(headless: bool = True) -> ErrorType:
     """
     logger.debug("Starting Epic Games collection task")
 
+    # ============================================================
+    # 🌐 代理配置：从环境变量读取（支持 WARP 等 HTTP 代理）
+    # 格式: HTTP_PROXY=http://host:port
+    # ============================================================
+    proxy_config = None
+    http_proxy = os.getenv("HTTP_PROXY") or os.getenv("HTTPS_PROXY")
+    if http_proxy:
+        from urllib.parse import urlparse
+        parsed = urlparse(http_proxy)
+        proxy_config = {
+            "server": f"{parsed.scheme}://{parsed.hostname}:{parsed.port}",
+        }
+        if parsed.username:
+            proxy_config["username"] = parsed.username
+        if parsed.password:
+            proxy_config["password"] = parsed.password
+        logger.info(f"🌐 使用代理: {parsed.hostname}:{parsed.port}")
+
     # Configure browser with anti-detection features
     async with AsyncCamoufox(
         persistent_context=True,
@@ -64,6 +83,7 @@ async def execute_browser_tasks(headless: bool = True) -> ErrorType:
         screen=Screen(max_width=1920, max_height=1080, min_height=1080, min_width=1920),
         humanize=0.2,
         headless=headless,
+        proxy=proxy_config,
     ) as browser:
         # Initialize or reuse existing browser page
         page = browser.pages[0] if browser.pages else await browser.new_page()

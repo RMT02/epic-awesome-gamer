@@ -454,7 +454,7 @@
                         <svg class="w-6 h-6 text-blue-400" style="width:24px;height:24px;flex-shrink:0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
                     </div>
                     <div>
-                        <p class="stat-label">托管账号</p>
+                        <p class="stat-label">有效账号</p>
                         <p class="stat-value text-white" id="stat-accounts">--</p>
                     </div>
                 </div>
@@ -764,7 +764,10 @@
         async function fetchSystemStats() {
             try {
                 const res = await axios.get('/api/system_stats');
-                document.getElementById('stat-accounts').textContent = res.data.total_accounts;
+                // 账号显示格式: 已验证数/总数 (如: 33/27 → 27/27)
+                const verified = res.data.verified_accounts || 0;
+                const total = res.data.total_accounts || 0;
+                document.getElementById('stat-accounts').textContent = `${verified}/${total}`;
                 document.getElementById('stat-today').textContent = res.data.today_claims;
                 document.getElementById('stat-total').textContent = res.data.total_claims;
                 // 队列任务数 = 等待中 + 处理中
